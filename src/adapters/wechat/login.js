@@ -1,5 +1,5 @@
 import qrcode from "qrcode-terminal";
-import { apiPost } from "./protocol.js";
+import { apiPostJson } from "./protocol.js";
 
 /**
  * WeChat QR login flow (ilink). Communicate with the auth gateway:
@@ -15,14 +15,14 @@ const QR_POLL_TIMEOUT_MS = 35_000;
 
 /** Request a fresh QR code. */
 export async function fetchQRCode(baseUrl = FIXED_BASE_URL, botType = DEFAULT_BOT_TYPE) {
-  const json = await apiPost(baseUrl, "", `ilink/bot/get_bot_qrcode?bot_type=${encodeURIComponent(botType)}`, {}, { includeUin: true });
+  const json = await apiPostJson({ baseUrl, token: "", endpoint: `ilink/bot/get_bot_qrcode?bot_type=${encodeURIComponent(botType)}`, body: {}, timeoutMs: 15_000 });
   return { qrcode: json.qrcode, qrcodeImg: json.qrcode_img_content, baseUrl };
 }
 
 async function pollStatus(baseUrl, qrcode, verifyCode) {
   let endpoint = `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`;
   if (verifyCode) endpoint += `&verify_code=${encodeURIComponent(verifyCode)}`;
-  return apiPost(baseUrl, "", endpoint, {}, { timeoutMs: QR_POLL_TIMEOUT_MS, includeUin: true });
+  return apiPostJson({ baseUrl, token: "", endpoint, body: {}, timeoutMs: QR_POLL_TIMEOUT_MS });
 }
 
 function printQR(qrcodeImg) {

@@ -94,7 +94,7 @@ export async function apiPostFetch({ baseUrl, endpoint, body, token, timeoutMs, 
 }
 
 /** Wrap apiPostFetch into a parsed-JSON helper used by typed calls. */
-async function apiPostJson({ baseUrl, token, endpoint, body, timeoutMs, label, abortSignal }) {
+export async function apiPostJson({ baseUrl, token, endpoint, body, timeoutMs, label, abortSignal }) {
   const raw = await apiPostFetch({ baseUrl, token, endpoint, body, timeoutMs, label, abortSignal });
   return JSON.parse(raw);
 }
