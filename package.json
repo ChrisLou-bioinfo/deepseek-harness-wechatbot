@@ -32,10 +32,11 @@
     }
   },
   "scripts": {
-    "test": "vitest run",
-    "dev": "dsh --profile imchat"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@deepseek-ai/cordis": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/cordis",
+    "@deepseek-ai/cordis-plugin-loader": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/cordis-plugin-loader",
     "@deepseek-ai/dsh-agent": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent",
     "@deepseek-ai/dsh-agent-default-model": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-default-model",
     "@deepseek-ai/dsh-agent-loop": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-loop",
@@ -43,11 +44,9 @@
     "@deepseek-ai/dsh-llm": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-llm",
     "@deepseek-ai/dsh-session": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-session",
     "@deepseek-ai/dsh-tools": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-tools",
-    "@deepseek-ai/cordis": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/cordis",
-    "@deepseek-ai/cordis-plugin-loader": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/cordis-plugin-loader",
     "@deepseek-ai/schemastery": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/schemastery",
+    "commander": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/commander",
     "qrcode-terminal": "^0.12.0",
-    "vitest": "^3.1.0",
-    "commander": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/commander"
+    "vitest": "^3.1.0"
   }
 }
