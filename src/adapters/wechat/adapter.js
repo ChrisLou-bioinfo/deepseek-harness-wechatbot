@@ -1,5 +1,5 @@
 import { loadState, saveState } from "../state-store.js";
-import { getUpdates, sendMessage, notifyStart, notifyStop, extractText } from "./protocol.js";
+import { getUpdates, sendMessage, notifyStart, notifyStop, extractText, STALE_TOKEN_ERRCODE } from "./protocol.js";
 import { runQRLogin } from "./login.js";
 
 /**
@@ -11,7 +11,6 @@ import { runQRLogin } from "./login.js";
  * conversationKey = from_user_id. Outbound echoes the stored context_token.
  */
 
-const STALE_TOKEN_ERRCODE = -14;
 const PAUSE_MS = 60 * 60 * 1000;
 const LONG_POLL_MS = 35_000;
 
@@ -44,10 +43,15 @@ const wechatAdapter = {
     if (!st.token) throw new Error(`wechat: no token for account "${account}"`);
     const contextToken = st.contextTokens?.[msg.conversationKey];
     await sendMessage(st.baseUrl, st.token, {
-      to: msg.conversationKey,
-      text: replyText,
-      contextToken,
-      clientId: `imchat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+      msg: {
+        from_user_id: "",
+        to_user_id: msg.conversationKey,
+        client_id: `imchat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+        message_type: 2,
+        message_state: 2,
+        item_list: replyText ? [{ type: 1, text_item: { text: replyText } }] : [],
+        ...(contextToken ? { context_token: contextToken } : {}),
+      },
     });
   },
 };
@@ -59,7 +63,7 @@ async function runAccount(config, name, onMessage, log, signal) {
 
   if (!token) {
     log("需要扫码登录微信…");
-    const loginResult = await runQRLogin({ signal, startQr: () => {} });
+    const loginResult = await runQRLogin({ signal });
     token = loginResult.token;
     baseUrl = loginResult.baseUrl || baseUrl;
     state = { ...state, token, baseUrl, user: loginResult.user, savedAt: new Date().toISOString() };
@@ -85,7 +89,7 @@ async function runAccount(config, name, onMessage, log, signal) {
       continue;
     }
     try {
-      const res = await getUpdates(baseUrl, token, cursor, { timeoutMs: LONG_POLL_MS, signal });
+      const res = await getUpdates(baseUrl, token, cursor, { timeoutMs: LONG_POLL_MS, abortSignal: signal });
       cursor = res.getUpdatesBuf;
       state = { ...state, cursor, token, baseUrl };
       saveState("wechat", name, state);

@@ -48,6 +48,13 @@ async function startLongRunning(ctx, config) {
   const enabled = config.adapters ?? ["console"];
   const platforms = config.platforms ?? {};
   const disposers = [];
+
+  // Keep the event loop alive: a DSH profile with no server and no active
+  // task would otherwise exit as soon as stdin/sockets idle. A low-frequency
+  // timer holds the process up without doing work.
+  const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
+  keepAlive.unref?.();
+
   for (const id of enabled) {
     const adapter = adapters.get(id);
     if (!adapter) {
@@ -58,16 +65,20 @@ async function startLongRunning(ctx, config) {
     // come from config.platforms[<id>]. Some adapters create multiple accounts;
     // pass the raw config through.
     const platformConfig = { name: id, ...(platforms[id] ?? {}) };
-    const disposer = await adapter.start(ctx, {
-      onMessage: (msg) => {
-        bridge.handle(msg, (reply) => adapter.send(ctx, msg, reply)).catch((err) =>
-          process.stderr.write(`imchat: ${String(err)}\n`),
-        );
-      },
-    }, platformConfig);
-    if (disposer?.close) disposers.push(disposer);
+    const base = { onMessage: (msg) => {
+      bridge.handle(msg, (reply) => adapter.send(ctx, msg, reply)).catch((err) =>
+        process.stderr.write(`imchat: ${String(err)}\n`),
+      );
+    } };
+    try {
+      const disposer = await adapter.start(ctx, base, platformConfig);
+      if (disposer?.close) disposers.push(disposer);
+    } catch (err) {
+      process.stderr.write(`imchat: adapter "${id}" failed to start: ${String(err)}\n`);
+    }
   }
   ctx.effect(() => {
+    clearInterval(keepAlive);
     for (const d of disposers) try { d.close(); } catch {}
     bridge.stop().catch(() => {});
   });

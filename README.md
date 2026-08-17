@@ -9,9 +9,9 @@
 | 平台 | 接入方式 | 状态 |
 |---|---|---|
 | Console | 标准输入/输出(演示 & 自测) | ✅ 可用 |
-| Matrix | 账号直连 + `/sync` 长轮询(Client-Server API) | 🚧 开发中 |
-| 飞书 | 官方 Bot API + 长连接推送 | 🚧 开发中 |
-| 微信 | 腾讯官方 ilink 协议(扫码登录 + 长轮询,免 wechaty) | 🚧 开发中 |
+| Matrix | 账号直连 + `/sync` 长轮询(Client-Server API) | ✅ 可用 |
+| 飞书 | 官方 SDK 长连接推送(免公网回调) | ✅ 可用 |
+| 微信 | 腾讯官方 ilink 协议(扫码登录 + 长轮询,免 wechaty) | ✅ 可用 |
 
 ## 快速开始
 
@@ -80,11 +80,96 @@ dsh --profile imchat
 
 ## 各适配器配置
 
-- [Matrix 接入](#)
-- [飞书接入](#)
-- [微信接入](#)
+配置位置:`~/.dsh/profiles/imchat/cordis.patch.yml` 里覆盖 `imchat` 行的 `config.platforms`。
 
-(各节由对应适配器文档补全)
+### 通用结构
+
+```yaml
+- id: imchat
+  config:
+    adapters: [console]            # 要启用的适配器列表
+    platforms:                     # 各平台凭据/配置,key = 适配器 id
+      wechat: { }
+      matrix: { }
+      feishu: { }
+```
+
+### 微信接入
+
+微信走 **腾讯官方 ilink 机器人协议**(与 [Tencent/openclaw-weixin](https://github.com/Tencent/openclaw-weixin) 相同的后端接口),**不需要 wechaty、不需要服务器回调**——扫码登录后由我们后台长轮询收消息。
+
+1. 配置账号(可不填 token,首次运行会提示扫码登录):
+
+```yaml
+- id: imchat
+  config:
+    adapters: [wechat]
+    platforms:
+      wechat:
+        # 可选:预置 token;不填则首次运行打印二维码扫码登录
+        # token: ""
+```
+
+2. 运行 `dsh --profile imchat`,终端打印二维码 → 手机微信「扫一扫」确认。登录后 token/baseUrl/cursor 保存在 `<仓库>/state/wechat-<账号>.json`,无需重复登录。
+3. 微信用户给你这个机器人发消息 → agent 处理 → 回复相同会话。
+4. 在飞的多账号:可用 `accounts` 数组(见源码 `adapter.js`),每个账号独立 cursor/上下文。
+
+> 已知限制:仅文本消息(v1);图片/语音/文件发收为后续迭代。
+
+### Matrix 接入
+
+通过 **Matrix Client-Server API** 以原生账号直连,长轮询 `/sync`,无需申请 AppService。
+
+1. 先为机器人创建一个 Matrix 账号(例如在 matrix.org)。
+2. 配置:
+
+```yaml
+- id: imchat
+  config:
+    adapters: [matrix]
+    platforms:
+      matrix:
+        homeserver: https://matrix.org
+        userId: "@mybot:matrix.org"
+        password: "..."          # 首次登录;之后 token 会持久化
+        # accessToken: "..."     # 也可以直接给 token,跳过密码登录
+```
+
+3. 把你的机器人账号拉进房间(或让用户私聊机器人)。机器人收到消息后会回复。
+4. token 与 `/sync` cursor 保存在 `<仓库>/state/matrix-<账号>.json`,重连时从上次断点续收。
+
+> 说明:个人常驻使用选择「原生账号 + /sync」而非 AppService——免去注册文件的部署复杂度。若之后需要托管多用户机器人再做 AppService 升级。
+
+### 飞书接入
+
+使用 **飞书官方 Node SDK 的长连接(WebSocket)模式**——**不需要公网 IP/域名/webhook 回调**,适合个人常驻服务器。
+
+1. 在[飞书开放平台](https://open.feishu.cn/)创建企业自建应用,开启权限:
+   - `im:message`(获取与发送单聊、群组消息)
+   - `im:message.group_at_msg`(群 @机器人 消息)
+   - 事件订阅选择「长连接」方式,添加事件 `im.message.receive_v1`(接收消息)。
+2. 配置:
+
+```yaml
+- id: imchat
+  config:
+    adapters: [feishu]
+    platforms:
+      feishu:
+        appId: "cli_xxx"
+        appSecret: "xxx"
+```
+
+3. 启动 `dsh --profile imchat`,机器人建立长连接,收到消息 → agent 处理 → 回复(走 `im/v1/message/reply` 同会话回复)。
+4. 凭据会持久化到 `<仓库>/state/feishu-<账号>.json`;SDK 内置断线重连。
+
+> 提示:飞书长连接限制「收到消息 3 秒内完成处理,否则触发超时重推」。imchat 的消息处理是异步的,不会阻塞长连接 ACK;若你的 agent 超时,平台会重推,桥会去重(见下)。
+
+### 平台细节与去重
+
+- 所有平台会话映射:每个 `(platform, account, conversationKey)` → 唯一 DSH session id(`sha1` 派生,会话隔离)。
+- 会话**串行**处理;重启后 resume 持久会话,不丢上下文。
+- 平台推送可能重试:长连接重推 / 微信 getUpdates 重启后会从 cursor 续收—天然幂等,重复消息仅当恢复时刻重叠可能出现,可在后续版本加 `message_id` 去重缓存。
 
 ## 开发
 
@@ -105,9 +190,10 @@ src/
     utils.js           # 共享工具(splitText/backoff/id)
   adapters/
     console.js         # 演示适配器
-    matrix/            # Matrix(开发中)
-    feishu/            # 飞书(开发中)
-    wechat/            # 微信(开发中)
+    state-store.js     # 凭据/游标持久化
+    matrix/            # Matrix(/sync 直连)
+    feishu/            # 飞书(官方 SDK 长连接)
+    wechat/            # 微信(ilink 官方协议)
 tests/                 # vitest 单测
 docs/plans/            # 设计文档
 ```
