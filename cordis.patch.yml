@@ -1,0 +1,34 @@
+# imchat bundle patch — mounts the IM bridge as a DSH profile layer.
+#
+# Applied after dsh-base (and in an overlay context, after every profile
+# bundle). It rides directly over the core: no Host, HTTP server, or browser
+# plugin is needed for a headless always-on IM gateway, so this patch works as
+# a `--patch` overlay on the `headless` profile AND as a dedicated `imchat`
+# profile bundle (created via `dsh plugin --profile imchat add <repo>`).
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a helpful AI assistant reachable through instant messaging
+      (Matrix, Feishu, WeChat). Reply to the user's message. Working directory: {{cwd}}.
+
+# The imchat runner is an ordinary consumer of core services. Its config is
+# read once at startup from the (patchable) row below; the entry point parses
+# `dsh --profile imchat <args>` via dsh-cmdline only in dedicated-profile
+# mode (see the README), never here in overlay mode.
+- insert:
+    - id: imchat
+      name: '@chris/imchat'
+      config:
+        # Which adapters to start. Overlay/deploy-time only; see README.
+        # "console" is a zero-dependency demo adapter (reads stdin, writes stdout).
+        adapters: [console]
+
+# The imchat profile hosts a real model route; pin the default model explicitly
+# (do not rely on agent-default-model settings, which the web layer owns).
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-v4-flash-0731
+    reasoningEffort: high
+

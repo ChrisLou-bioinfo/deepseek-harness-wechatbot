@@ -1,0 +1,53 @@
+{
+  "name": "@chris/imchat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IM chat bridge for DeepSeek Harness: talk to your DSH agent from Matrix, Feishu, and WeChat",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "im",
+    "matrix",
+    "feishu",
+    "wechat",
+    "plugin"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "dev": "dsh --profile imchat"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-agent": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent",
+    "@deepseek-ai/dsh-agent-default-model": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-default-model",
+    "@deepseek-ai/dsh-agent-loop": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-agent-loop",
+    "@deepseek-ai/dsh-cmdline": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-cmdline",
+    "@deepseek-ai/dsh-llm": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-llm",
+    "@deepseek-ai/dsh-session": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-session",
+    "@deepseek-ai/dsh-tools": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-tools",
+    "@deepseek-ai/cordis": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/cordis",
+    "@deepseek-ai/cordis-plugin-loader": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/cordis-plugin-loader",
+    "@deepseek-ai/schemastery": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/schemastery",
+    "qrcode-terminal": "^0.12.0",
+    "vitest": "^3.1.0",
+    "commander": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/commander"
+  }
+}
