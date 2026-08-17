@@ -3,6 +3,9 @@ import { Command } from "commander";
 import { parseCmdline } from "@deepseek-ai/dsh-cmdline";
 import { createBridge } from "./lib/bridge.js";
 import { consoleAdapter } from "./adapters/console.js";
+import { wechatAdapter } from "./adapters/wechat/adapter.js";
+import { matrixAdapter } from "./adapters/matrix/adapter.js";
+import { feishuAdapter } from "./adapters/feishu/adapter.js";
 
 /**
  * @module @chris/imchat
@@ -22,8 +25,12 @@ import { consoleAdapter } from "./adapters/console.js";
 /** Stable Cordis plugin name. */
 const name = "imchat";
 
-/** Re-register adapters here as they are implemented. */
-const adapters = new Map([["console", consoleAdapter]]);
+/** Re-register all implemented adapters. */
+const adapters = new Map(
+  [consoleAdapter, wechatAdapter, matrixAdapter, feishuAdapter]
+    .filter((a) => a && typeof a.start === "function")
+    .map((a) => [a.id, a]),
+);
 
 async function runSelfTest(ctx, config, text) {
   const bridge = await createBridge(ctx, { randomIds: true });
@@ -39,6 +46,7 @@ async function runSelfTest(ctx, config, text) {
 async function startLongRunning(ctx, config) {
   const bridge = await createBridge(ctx);
   const enabled = config.adapters ?? ["console"];
+  const platforms = config.platforms ?? {};
   const disposers = [];
   for (const id of enabled) {
     const adapter = adapters.get(id);
@@ -46,13 +54,17 @@ async function startLongRunning(ctx, config) {
       ctx.logger.warn(`imchat: unknown adapter "${id}" ignored`);
       continue;
     }
+    // Per-adapter credentials/config (appId, appSecret, homeserver, accounts, ...)
+    // come from config.platforms[<id>]. Some adapters create multiple accounts;
+    // pass the raw config through.
+    const platformConfig = { name: id, ...(platforms[id] ?? {}) };
     const disposer = await adapter.start(ctx, {
       onMessage: (msg) => {
         bridge.handle(msg, (reply) => adapter.send(ctx, msg, reply)).catch((err) =>
           process.stderr.write(`imchat: ${String(err)}\n`),
         );
       },
-    });
+    }, platformConfig);
     if (disposer?.close) disposers.push(disposer);
   }
   ctx.effect(() => {
@@ -87,7 +99,11 @@ function apply(ctx, config) {
   parseCmdline(ctx, program);
 }
 
-const Config = z.object({ adapters: z.array(z.string()).default(["console"]) });
+const Config = z.object({
+  adapters: z.array(z.string()).default(["console"]),
+  // schemastery objects allow unknown keys by default (no .passthrough needed)
+  platforms: z.object({}),
+});
 
 /** Required core services; the loader validates and injects them. */
 export const inject = ["agents", "sessions", "agentDefaultModel", "cmdlineArgs", "appExit"];

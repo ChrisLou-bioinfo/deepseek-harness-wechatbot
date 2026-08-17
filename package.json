@@ -45,6 +45,7 @@
     "@deepseek-ai/dsh-session": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-session",
     "@deepseek-ai/dsh-tools": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-tools",
     "@deepseek-ai/schemastery": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/schemastery",
+    "@larksuiteoapi/node-sdk": "^1.73.0",
     "commander": "file:/usr/local/Homebrew/Cellar/node/25.1.0_1/lib/node_modules/@deepseek-ai/dsh/node_modules/commander",
     "qrcode-terminal": "^0.12.0",
     "vitest": "^3.1.0"

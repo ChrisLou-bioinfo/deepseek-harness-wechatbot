@@ -13,7 +13,7 @@ import { createInterface } from "node:readline/promises";
 export const consoleAdapter = {
   id: "console",
   label: "Console (stdin/stdout)",
-  async start(ctx, { onMessage }) {
+  async start(ctx, { onMessage }, _platformConfig = {}) {
     const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
     rl.on("line", (line) => {
       const text = line.trim();

@@ -23,6 +23,13 @@
         # Which adapters to start. Overlay/deploy-time only; see README.
         # "console" is a zero-dependency demo adapter (reads stdin, writes stdout).
         adapters: [console]
+        # Per-platform credentials/config. Each key matches an adapter id;
+        # empty means the adapter runs with no credentials (console) or prompts
+        # for login (wechat QR). See README per-platform sections.
+        platforms:
+          wechat: { }
+          matrix: { }
+          feishu: { }
 
 # The imchat profile hosts a real model route; pin the default model explicitly
 # (do not rely on agent-default-model settings, which the web layer owns).
