@@ -98,6 +98,19 @@ dsh --profile imchat
 
 > 启用真实平台时把 `adapters` 列表改为对应 id(如 `[wechat, matrix]`),并在 `platforms` 下填凭据。留空则微信走二维码登录提示、Matrix/飞书按无凭据容错启动(日志可见)。
 
+### 固定工作区
+
+所有平台的会话共享一个**固定的 agent 工作目录**,对话产生的文件、上下文都在同一区域,可配置:
+
+```yaml
+- id: imchat
+  config:
+    # 可选;默认 <cwd>/.imchat-workspace
+    workspaceDir: /srv/imchat-workspace
+```
+
+工作区会在启动时自动创建;每个会话的 DSH agent 都在该目录下运行(而非散落的 `process.cwd()`)。
+
 ### 微信接入
 
 微信走 **腾讯官方 ilink 机器人协议**(与 [Tencent/openclaw-weixin](https://github.com/Tencent/openclaw-weixin) 相同的后端接口),**不需要 wechaty、不需要服务器回调**——扫码登录后由我们后台长轮询收消息。

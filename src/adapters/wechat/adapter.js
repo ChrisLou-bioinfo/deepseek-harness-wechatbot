@@ -28,7 +28,6 @@ const wechatAdapter = {
       const acctName = acct.name ?? "default";
       const ctl = new AbortController();
       controllers.push(ctl);
-      process.stderr.write(`[wechat:${acctName}] runAccount starting, hasToken=${!!(acct.token || loadState("wechat", acctName).token)}\n`);
       runAccount(acct, acctName, onMessage, log, ctl.signal).catch((err) => log(`account stopped: ${String(err)}`));
     }
 

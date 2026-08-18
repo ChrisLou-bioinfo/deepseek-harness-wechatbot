@@ -120,17 +120,16 @@ async function createBridge(ctx, options = {}) {
   }
 
   async function handle(msg, send, opts = {}) {
-    process.stderr.write(`imchat: handle ${msg.conversationKey}: ${JSON.stringify(String(msg.text).slice(0, 30))}\n`);
     const driver = await driverFor(msg.conversationKey);
-    process.stderr.write(`imchat: driver ready for ${msg.conversationKey}\n`);
     await enqueue(driver, async () => {
-      process.stderr.write(`imchat: followup ${msg.conversationKey}\n`);
+      process.stderr.write(`imchat: turn ${msg.conversationKey} ← "${String(msg.text).slice(0, 40)}"\n`);
       driver.agent.followup(userMessage(msg.text));
       await driver.agent.whenIdle();
-      process.stderr.write(`imchat: idle ${msg.conversationKey}\n`);
       const reply = lastAssistantText(driver.agent.session);
-      process.stderr.write(`imchat: reply? ${reply ? "yes" : "no"} for ${msg.conversationKey}\n`);
-      if (reply) await send(reply);
+      if (reply) {
+        await send(reply);
+        process.stderr.write(`imchat: reply sent to ${msg.conversationKey}\n`);
+      }
       if (opts.onTurnEnd) {
         const end = [...driver.agent.session.events].reverse().find((e) => e.type === "turn/end");
         opts.onTurnEnd({ reply, end });
