@@ -43,17 +43,12 @@ async function runSelfTest(ctx, config, text) {
   await bridge.stop();
 }
 
-async function startLongRunning(ctx, config) {
+async function startLongRunning(ctx, config, keepAlive) {
   const bridge = await createBridge(ctx);
   const enabled = config.adapters ?? ["console"];
   const platforms = config.platforms ?? {};
   const disposers = [];
-
-  // Keep the event loop alive: a DSH profile with no server and no active
-  // task would otherwise exit as soon as stdin/sockets idle. A low-frequency
-  // timer holds the process up without doing work.
-  const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
-  keepAlive.unref?.();
+  process.stderr.write(`imchat: starting ${enabled.length} adapter(s)\n`);
 
   for (const id of enabled) {
     const adapter = adapters.get(id);
@@ -72,6 +67,7 @@ async function startLongRunning(ctx, config) {
     } };
     try {
       const disposer = await adapter.start(ctx, base, platformConfig);
+      process.stderr.write(`imchat: adapter "${id}" started\n`);
       if (disposer?.close) disposers.push(disposer);
     } catch (err) {
       process.stderr.write(`imchat: adapter "${id}" failed to start: ${String(err)}\n`);
@@ -103,7 +99,14 @@ function apply(ctx, config) {
         );
         return;
       }
-      startLongRunning(ctx, config).catch((err) => {
+      // Long-running bridge: register a keep-alive timer SYNCHRONOUSLY in the
+      // action before we fire the async adapter startup, so the DSH process
+      // cannot exit between this action returning and adapters opening their
+      // network sockets. The timer is NOT unref'd — that would defeat its
+      // purpose. It is cleared by the effect below on shutdown.
+      const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
+      process.stderr.write("imchat: long-running mode starting\n");
+      startLongRunning(ctx, config, keepAlive).catch((err) => {
         process.stderr.write(`imchat: startup failed: ${String(err)}\n`);
       });
     });
