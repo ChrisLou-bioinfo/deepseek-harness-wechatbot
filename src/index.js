@@ -33,7 +33,9 @@ const adapters = new Map(
 );
 
 async function runSelfTest(ctx, config, text) {
-  const bridge = await createBridge(ctx, { randomIds: true });
+  // randomIds true → no persistence interference; set IMCHAT_DETERMINISTIC to
+  // exercise the resume path against any existing persisted log for the key.
+  const bridge = await createBridge(ctx, { randomIds: !process.env.IMCHAT_DETERMINISTIC });
   const replies = [];
   await bridge.handle(
     { platform: "console", account: "self", conversationKey: "self", text, sender: "self" },
