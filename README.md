@@ -78,6 +78,8 @@ dsh --profile imchat
 - 有可用会话持久化(本 bundle 挂载 JSONL backend)时,新进程会 **resume** 已存在的会话,而不是重建——重启后历史保留,会话不串。
 - 每个会话 driver 内部**串行**处理消息(单 LLM 并发),避免同一会话消息乱序。
 
+- `[console]` 是默认适配器:DSH 进程启动时会消费管道 stdin,因此 console 长驻模式主要用于**验证启动流程**(三平台为网络长驻,不受影响);完整的 agent 收发闭环请用 `--self-test` 或任一真实平台验证。
+
 ## 各适配器配置
 
 配置位置:`~/.dsh/profiles/imchat/cordis.patch.yml` 里覆盖 `imchat` 行的 `config.platforms`。
@@ -93,6 +95,8 @@ dsh --profile imchat
       matrix: { }
       feishu: { }
 ```
+
+> 启用真实平台时把 `adapters` 列表改为对应 id(如 `[wechat, matrix]`),并在 `platforms` 下填凭据。留空则微信走二维码登录提示、Matrix/飞书按无凭据容错启动(日志可见)。
 
 ### 微信接入
 
