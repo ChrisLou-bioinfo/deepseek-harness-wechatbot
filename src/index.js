@@ -1,7 +1,7 @@
 import z from "@deepseek-ai/schemastery";
-import { Command } from "commander";
-import { parseCmdline } from "@deepseek-ai/dsh-cmdline";
+import path from "node:path";
 import { createBridge } from "./lib/bridge.js";
+import { startQRServer } from "./lib/qr-server.js";
 import { consoleAdapter } from "./adapters/console.js";
 import { wechatAdapter } from "./adapters/wechat/adapter.js";
 import { matrixAdapter } from "./adapters/matrix/adapter.js";
@@ -46,10 +46,22 @@ async function runSelfTest(ctx, config, text) {
 }
 
 async function startLongRunning(ctx, config, keepAlive) {
-  const bridge = await createBridge(ctx);
+  // Fixed workspace for the whole bridge (default: ./.imchat-workspace under cwd).
+  const workspaceRoot = config.workspaceDir ?? path.resolve(process.cwd(), ".imchat-workspace");
+  process.stderr.write(`imchat: bridge workspace = ${workspaceRoot}\n`);
+  const bridge = await createBridge(ctx, { workspaceRoot });
   const enabled = config.adapters ?? ["console"];
   const platforms = config.platforms ?? {};
   const disposers = [];
+
+  // QR viewer: exposed at http://127.0.0.1:<port>/qr (browser-scannable login).
+  try {
+    const qr = await startQRServer();
+    process.stderr.write(`imchat: QR viewer at http://127.0.0.1:${qr.port}/qr\n`);
+  } catch (err) {
+    process.stderr.write(`imchat: QR server not started (${String(err)})\n`);
+  }
+
   process.stderr.write(`imchat: starting ${enabled.length} adapter(s)\n`);
 
   for (const id of enabled) {
@@ -75,48 +87,57 @@ async function startLongRunning(ctx, config, keepAlive) {
       process.stderr.write(`imchat: adapter "${id}" failed to start: ${String(err)}\n`);
     }
   }
-  ctx.effect(() => {
+  // Return the cleanup for the apply (durable) fiber to register — registering
+  // it here would run in whatever async context called us (commander/action)
+  // and get disposed immediately, which is exactly the bug we're fixing.
+  return async function shutdown() {
     clearInterval(keepAlive);
-    for (const d of disposers) try { d.close(); } catch {}
-    bridge.stop().catch(() => {});
-  });
+    for (const d of disposers) try { (await d.close?.()) ?? d.close?.(); } catch {}
+    await bridge.stop().catch(() => {});
+  };
 }
 
-/** Cordis plugin entry; sync apply, heavy work fired async. */
+/** Cordis plugin entry. Runs in the DSH durable fiber (NOT commander's action
+ *  context), so ctx.effect registrations here live for the process lifetime. */
 function apply(ctx, config) {
-  const program = new Command()
-    .name("dsh --profile imchat")
-    .helpOption(false)
-    .argument("[text...]", "self-test prompt text")
-    .option("--self-test", "run one message through the bridge, print the reply, and exit")
-    .action(() => {
-      const text = program.args.join(" ");
-      if (program.getOptionValue("selfTest")) {
-        runSelfTest(ctx, config, text || "Reply with exactly: IM-BRIDGE-OK").then(
-          () => ctx.get("appExit")?.(0),
-          (err) => {
-            process.stderr.write(`imchat: self-test failed: ${String(err)}\n`);
-            ctx.get("appExit")?.(1);
-          },
-        );
-        return;
-      }
-      // Long-running bridge: register a keep-alive timer SYNCHRONOUSLY in the
-      // action before we fire the async adapter startup, so the DSH process
-      // cannot exit between this action returning and adapters opening their
-      // network sockets. The timer is NOT unref'd — that would defeat its
-      // purpose. It is cleared by the effect below on shutdown.
-      const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
-      process.stderr.write("imchat: long-running mode starting\n");
-      startLongRunning(ctx, config, keepAlive).catch((err) => {
-        process.stderr.write(`imchat: startup failed: ${String(err)}\n`);
-      });
-    });
-  parseCmdline(ctx, program);
+  const cmd = ctx.get("cmdlineArgs");
+  const args = cmd?.get() ?? [];
+  const selfTestIdx = args.indexOf("--self-test");
+
+  if (selfTestIdx >= 0) {
+    // One-shot self-test mode: bridge → model → print reply → exit.
+    const raw = args.slice(selfTestIdx + 1).join(" ").trim();
+    const text = raw || "Reply with exactly: IM-BRIDGE-OK";
+    runSelfTest(ctx, config, text).then(
+      () => ctx.get("appExit")?.(0),
+      (err) => {
+        process.stderr.write(`imchat: self-test failed: ${String(err)}\n`);
+        ctx.get("appExit")?.(1);
+      },
+    );
+    return;
+  }
+
+  // Long-running bridge mode. Register the keep-alive timer synchronously so
+  // the process cannot exit between here and adapter sockets opening. The
+  // timer is NOT unref'd (that would defeat it); we clear it on shutdown.
+  const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
+  ctx.effect(() => clearInterval(keepAlive)); // runs on real shutdown (durable fiber)
+  process.stderr.write("imchat: long-running mode starting\n");
+  // startLongRunning registers no ctx.effect itself; the cleanup it returns is
+  // bound here, in the durable fiber, so adapters are only closed on real
+  // shutdown and never aborted immediately after startup.
+  startLongRunning(ctx, config, keepAlive).then(
+    (shutdown) => ctx.effect(() => { shutdown().catch(() => {}); }),
+    (err) => process.stderr.write(`imchat: startup failed: ${String(err)}\n`),
+  );
 }
 
 const Config = z.object({
   adapters: z.array(z.string()).default(["console"]),
+  // Fixed bridge workspace (absolute or relative path); defaults to
+  // <cwd>/.imchat-workspace. All platform conversations share this area.
+  workspaceDir: z.string(),
   // schemastery objects allow unknown keys by default (no .passthrough needed)
   platforms: z.object({}),
 });

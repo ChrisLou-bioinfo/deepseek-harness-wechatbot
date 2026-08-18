@@ -1,6 +1,7 @@
 import { loadState, saveState } from "../state-store.js";
 import { getUpdates, sendMessage, notifyStart, notifyStop, extractText, STALE_TOKEN_ERRCODE } from "./protocol.js";
 import { runQRLogin } from "./login.js";
+import { publishQR } from "../../lib/qr-server.js";
 
 /**
  * WeChat adapter — official ilink protocol (no wechaty).
@@ -27,6 +28,7 @@ const wechatAdapter = {
       const acctName = acct.name ?? "default";
       const ctl = new AbortController();
       controllers.push(ctl);
+      process.stderr.write(`[wechat:${acctName}] runAccount starting, hasToken=${!!(acct.token || loadState("wechat", acctName).token)}\n`);
       runAccount(acct, acctName, onMessage, log, ctl.signal).catch((err) => log(`account stopped: ${String(err)}`));
     }
 
@@ -63,7 +65,18 @@ async function runAccount(config, name, onMessage, log, signal) {
 
   if (!token) {
     log("需要扫码登录微信…");
-    const loginResult = await runQRLogin({ signal });
+    // Login does NOT take the account's abort signal: the long-poll fetch
+    // self-terminates and process shutdown naturally drops it, so an external
+    // abort can never kill the scan-wait (that was an intermittent bug where
+    // DSH teardown aborted the controller mid-login).
+    const loginResult = await runQRLogin({
+      startQr: ({ qrcode, qrcodeImg }) => {
+        // Publish a SCANNABLE ascii QR for the viewer page. qrcodeImg may be a
+        // URL to liteapp; encode the stable `qrcode` hash instead.
+        publishQR("wechat", { qrcode, qrcodeImg, baseUrl, account: name });
+      },
+      log,
+    });
     token = loginResult.token;
     baseUrl = loginResult.baseUrl || baseUrl;
     state = { ...state, token, baseUrl, user: loginResult.user, savedAt: new Date().toISOString() };
@@ -82,14 +95,19 @@ async function runAccount(config, name, onMessage, log, signal) {
   let failures = 0;
   let pausedUntil = 0;
 
-  while (!signal.aborted) {
+  // Long-poll loop. Deliberately independent of the external `signal` abort
+  // chain (DSH may abort that controller during plugin teardown; we must keep
+  // polling regardless). Each getUpdates long-poll is bounded by its own fetch
+  // timeout and naturally retries; process shutdown drops the loop as garbage.
+  while (true) {
     const now = Date.now();
     if (now < pausedUntil) {
-      await delay(pausedUntil - now, signal);
+      await new Promise((r) => setTimeout(r, Math.min(30_000, pausedUntil - now)));
       continue;
     }
     try {
-      const res = await getUpdates(baseUrl, token, cursor, { timeoutMs: LONG_POLL_MS, abortSignal: signal });
+      // Do NOT forward the external signal to getUpdates — keep polling alive.
+      const res = await getUpdates(baseUrl, token, cursor, { timeoutMs: LONG_POLL_MS });
       cursor = res.getUpdatesBuf;
       state = { ...state, cursor, token, baseUrl };
       saveState("wechat", name, state);
@@ -107,12 +125,11 @@ async function runAccount(config, name, onMessage, log, signal) {
       failures++;
       log(`getUpdates failed (${failures}): ${String(err.message ?? err)}`);
       if (failures >= 5) {
-        await delay(10_000, signal);
+        await new Promise((r) => setTimeout(r, 10_000));
         failures = 0;
       }
     }
   }
-  try { await notifyStop(baseUrl, token); } catch {}
 }
 
 async function handleInbound(m, account, onMessage, { state, token, baseUrl }) {
@@ -134,13 +151,5 @@ async function handleInbound(m, account, onMessage, { state, token, baseUrl }) {
   });
 }
 
-function delay(ms, signal) {
-  return new Promise((resolve) => {
-    if (signal?.aborted) return resolve();
-    const t = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
-    const onAbort = () => { clearTimeout(t); resolve(); };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
 
 export { wechatAdapter };

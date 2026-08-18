@@ -64,21 +64,32 @@ export async function runQRLogin(opts = {}) {
     print = printQR,
     log = (m) => process.stderr.write(`[wechat-login] ${m}\n`),
     maxAttempts = 3,
-    signal,
   } = opts;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (signal?.aborted) throw signal.reason ?? new Error("login aborted");
     if (attempt > 1) log(`重试第 ${attempt} 次…`);
-    const { qrcode, qrcodeImg, baseUrl: effectiveBase } = await fetchQRCode(baseUrl, botType);
-    startQr?.({ qrcodeImg, baseUrl: effectiveBase });
+    let qr;
+    try {
+      qr = await fetchQRCode(baseUrl, botType);
+    } catch (err) {
+      process.stderr.write(`[wechat-login] fetchQRCode error: ${err.name}: ${err.message}\n`);
+      throw err;
+    }
+    const { qrcode, qrcodeImg, baseUrl: effectiveBase } = qr;
+    startQr?.({ qrcode, qrcodeImg, baseUrl: effectiveBase });
     print(qrcodeImg);
 
     let currentBase = effectiveBase;
     let pendingVerifyCode;
     for (let poll = 0; poll < 60; poll++) {
-      if (signal?.aborted) throw signal.reason ?? new Error("login aborted");
-      const status = await pollStatus(currentBase, qrcode, pendingVerifyCode);
+      let status;
+      try {
+        status = await pollStatus(currentBase, qrcode, pendingVerifyCode);
+      } catch (err) {
+        process.stderr.write(`[wechat-login] pollStatus error at poll ${poll}: ${err.name}: ${err.message}\n`);
+        if (err.name === "AbortError") continue; // treat transient abort as retry
+        throw err;
+      }
       const state = status.status;
       if (state === "confirmed") {
         if (!status.bot_token) throw new Error("login confirmed but no bot_token returned");

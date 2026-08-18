@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { installModelSelection } from "@deepseek-ai/dsh-agent";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import { SessionId } from "@deepseek-ai/dsh-session";
@@ -56,6 +58,13 @@ async function createBridge(ctx, options = {}) {
   if (!agents || !model || !sessions) throw new Error("imchat: core services unavailable");
   const selection = model.currentSelection();
   const randomIds = options.randomIds === true;
+  // Fixed workspace for every agent: one stable directory (resolved absolute)
+  // so a platform's whole conversation shares a single work area. Falls back
+  // to process.cwd() when unset.
+  const workspaceRoot = options.workspaceRoot
+    ? (options.workspaceRoot.startsWith("/") ? options.workspaceRoot : path.resolve(process.cwd(), options.workspaceRoot))
+    : process.cwd();
+  fs.mkdirSync(workspaceRoot, { recursive: true });
   const drivers = new Map();
 
   /** Result: { agent, dispose }. dispose() tears the agent down (await handle Closure). */
@@ -66,19 +75,22 @@ async function createBridge(ctx, options = {}) {
     };
     const agentOpts = {
       sessionId,
-      meta: { cwd: process.cwd() },
+      meta: { cwd: workspaceRoot },
       agentOptions: { provider: selection.provider, model: selection.model },
       setup,
     };
-    // resume semantics: try durable resume, fall back to fresh create.
+    // resume semantics: try durable resume, fall back to fresh create. A
+    // resume "failure" here is normally the expected "no persisted log yet"
+    // case; treat any resume rejection as a create-fallback signal (log for
+    // diagnostics). Only genuinely fatal persistence errors would regress, and
+    // a fresh create is the safe degradation (we keep the same deterministic id).
     const persistence = sessions && ctx.get("sessionPersistence");
     if (!randomIds && persistence) {
       try {
         const handle = await agents.resume({ ...agentOpts, resumeSessionId: sessionId });
         return handle;
       } catch (err) {
-        // ENOENT means no durable log — create fresh; other errors surface.
-        if (!String(err.message).includes("ENOENT") && !/does not exist/i.test(String(err.message))) throw err;
+        process.stderr.write(`imchat: resume ${sessionId} failed (${String(err.message ?? err)}); creating fresh\n`);
       }
     }
     return agents.create(agentOpts);
@@ -108,11 +120,16 @@ async function createBridge(ctx, options = {}) {
   }
 
   async function handle(msg, send, opts = {}) {
+    process.stderr.write(`imchat: handle ${msg.conversationKey}: ${JSON.stringify(String(msg.text).slice(0, 30))}\n`);
     const driver = await driverFor(msg.conversationKey);
+    process.stderr.write(`imchat: driver ready for ${msg.conversationKey}\n`);
     await enqueue(driver, async () => {
+      process.stderr.write(`imchat: followup ${msg.conversationKey}\n`);
       driver.agent.followup(userMessage(msg.text));
       await driver.agent.whenIdle();
+      process.stderr.write(`imchat: idle ${msg.conversationKey}\n`);
       const reply = lastAssistantText(driver.agent.session);
+      process.stderr.write(`imchat: reply? ${reply ? "yes" : "no"} for ${msg.conversationKey}\n`);
       if (reply) await send(reply);
       if (opts.onTurnEnd) {
         const end = [...driver.agent.session.events].reverse().find((e) => e.type === "turn/end");
